@@ -1,0 +1,80 @@
+README
+
+Usage:
+bash charseq_flypipe.sh [/path/to/R01.fastq.gz] [/complete/desired/output/path/]
+[# of cores to use] [dirty or cleanup]
+
+Where the first argument is the single ended gzipped fastq file
+Second is where you would like your output files
+Third is the number of cores you'd like to use 
+    [enter 1 if you don't want to parallelize]
+Fourth is optional: type cleanup to automatically gzip intermediate files 
+    after the run to save space"
+    
+ie:
+bash charseq_flypipe.sh /data/cl8-test.fastq.gz /outputdirectory 4
+
+output files are:
+.ChARdnaRna.prioritized.sense.txt / .ChARdnaRna.prioritized.antisense.txt
+    where RNA contacts were prioritized by annotation in the following order
+	tRNA miscRNA ncRNA transcript three_prime_UTR five_prime_UTR exon intron miRNA gene gene_extended2000
+	eg: a read matching both a ncRNA and a transcript would receive ncRNA annotations
+	sense is for RNA specifically in the sense direction of the annotated transcript
+	antisense are RNAs that did not initally align in sense but did antisense
+	Header:
+	DNA chrom	DNA pos	DNA posplus1	unique ID	DNA adjusted pos	DNA strand	DNA MAPQ	DNA CIGAR	RNA Fb..(gn/tr/...)	RNA pos in transcript ref	RNA MAPQ	RNA CIGAR	RNAref type	RNAref chrom	RNAref bed start	RNAref bed stop	RNAref name (transcriptome specific)	RNAref pos adjusted	RNA chrom	RNAref TSS	RNAref TTS	RNAref Splice sites	RNA chrom	RNA chrom pos	RNA chrom posplus1	RNA chrom pos adjusted	RNA chrom (read) strand	RNA gene name	RNA transcript strand	RNA transcript length	RNA read length	Parentgn	RNA gene TSS	RNA gene TTS	RNA ref chrom	RNA gene bed start	RNA gene bed stop	RNA gene length
+.ChARdnaRna.ribominus.sense.txt / .ChARdnaRna.ribominus.antisense.txt
+	as above but without 'rRNA' or 'FBgn0085813',
+	ribosomal genes that occupy much of the dataset
+.ChARdnaRna.notranscriptome
+	contains RNA to DNA contacts that where the RNA was not assigned to a transcript from flybase
+	Header:
+	UniqueID	DNA chrom	DNA pos 	DNA MAPQ	DNA CIGAR	DNA length	DNA strand	RNA chrom	RNA pos 	RNA MAPQ	RNA CIGAR	RNA length	RNA strand
+
+
+Dependencies:
+	You must have the following programs in your path
+		python			https://www.python.org/downloads/
+		bowtie2			http://bowtie-bio.sourceforge.net/bowtie2/index.shtml
+		samtools		http://www.htslib.org/
+		super_deduper	https://github.com/dstreett/Super-Deduper
+	And the following Python packages:tri
+		os
+		re
+		sys
+		bz2
+		time
+		gzip
+		string
+		argparse
+		itertools
+		optparse
+		biopython AlignIO and SeqIO
+	The program will automatically check for these and notify you if you're missing one.
+
+
+Description of code:
+	Beginning with gzipped fastq's: PCR duplicates are removed using Super Deduper (Petersen, 2015)
+	using the entire read length. Adapters are trimmed with Trimmomatic (Bolger, 2014) using a 
+	composite set of Illumina adapters, leading/trailing cut length of 3, slidingwindow of 4:15, 
+	and a minimum length of 36. RNA and DNA portions of the read are identified and split by a 
+	custom python program that finds the bridge, uses its polarity to identify the reads, and 
+	verifies that there is only a copy of the bridge. DNA is aligned to the dm3/release 5 using 
+	bowtie2 (Langmead, 2012) with the --very-sensitive option except allowing one mismatch. RNA is 
+	aligned to all transcriptomes from flybase (downloaded January 2016 versions r5.57) with the 
+	same parameters, first forcing forward strandedness and then, for reads that didn't align 
+	in the sense direction, permitting antisense alignment. Reads that had both aligning sense RNA 
+	and DNA are linked, preserving the transcriptome annotations in the order tRNA, miscRNA, ncRNA,
+	transcript, three_prime_UTR, five_prime_UTR, exon, intron, miRNA, gene, gene_extended2000 (eg: 
+	a read matching both a ncRNA and a transcript would receive ncRNA annotations). If a read is
+	not caught by a sense alignment but is caught by an antisense alignment, it is linked and ordered
+	in the same manner. If an RNA read did not map to a transcriptome but did map to the genome, it
+	is combined into a separate file with no annotation. Annotated (sense and antisense) reads then
+	have rRNAs removed.
+
+	super deduper paper: http://dl.acm.org/citation.cfm?id=2811568
+	trimmomatic paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4103590/
+	bowtie2: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3322381/
+	
+	NOTE:   Requires Python 2.7 (does not work with Python 3) and is intended to run in a Linux environment, 
+	        but can be modified to run on a mac by replacing "zcat" with "gunzip -c"
